@@ -24,6 +24,15 @@ parser.add_argument('--chat',
                     action='store_true',
                     default=False,
                     help='response generation on given user input')
+parser.add_argument('--train',
+                    action='store_true',
+                    default=False,
+                    help='for training')
+parser.add_argument('--model_params',
+                    type=str,
+                    default='logs/kobart_-chitchat-model_chp/best_model.ckpt',
+                    help='model binary for starting chat')
+
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -36,12 +45,12 @@ class ArgsBase():
             parents=[parent_parser], add_help=False)
         parser.add_argument('--train_file',
                             type=str,
-                            default='Chatbot_data/train.csv',
+                            default='data/fm_train.csv',
                             help='train file')
 
         parser.add_argument('--test_file',
                             type=str,
-                            default='Chatbot_data/test.csv',
+                            default='data/fm_test.csv',
                             help='test file')
 
         parser.add_argument('--tokenizer_path',
@@ -235,6 +244,7 @@ class KoBARTConditionalGeneration(Base):
         self.tokenizer = PreTrainedTokenizerFast(
             tokenizer_file=os.path.join(self.hparams.tokenizer_path, 'model.json'),
             bos_token=self.bos_token, eos_token=self.eos_token, unk_token='<unk>', pad_token='<pad>', mask_token='<mask>')
+        self.save_hyperparameters(hparams)
 
     def forward(self, inputs):
         return self.model(input_ids=inputs['input_ids'],
@@ -273,31 +283,32 @@ if __name__ == '__main__':
     parser = pl.Trainer.add_argparse_args(parser)
     args = parser.parse_args()
     logging.info(args)
+    if args.train : 
+        model = KoBARTConditionalGeneration(args)
 
-    model = KoBARTConditionalGeneration(args)
-
-    dm = ChatDataModule(args.train_file,
-                        args.test_file,
-                        os.path.join(args.tokenizer_path, 'model.json'),
-                        max_seq_len=args.max_seq_len,
-                        num_workers=args.num_workers)
-    checkpoint_callback = pl.callbacks.ModelCheckpoint(monitor='val_loss',
-                                                       dirpath=args.default_root_dir,
-                                                       filename='model_chp/{epoch:02d}-{val_loss:.3f}',
-                                                       verbose=True,
-                                                       save_last=True,
-                                                       mode='min',
-                                                       save_top_k=-1,
-                                                       prefix='kobart_chitchat')
-    tb_logger = pl_loggers.TensorBoardLogger(os.path.join(args.default_root_dir, 'tb_logs'))
-    lr_logger = pl.callbacks.LearningRateMonitor()
-    trainer = pl.Trainer.from_argparse_args(args, logger=tb_logger,
-                                            callbacks=[checkpoint_callback, lr_logger])
-    trainer.fit(model, dm)
+        dm = ChatDataModule(args.train_file,
+                            args.test_file,
+                            os.path.join(args.tokenizer_path, 'model.json'),
+                            max_seq_len=args.max_seq_len,
+                            num_workers=args.num_workers)
+        checkpoint_callback = pl.callbacks.ModelCheckpoint(monitor='val_loss',
+                                                        dirpath=args.default_root_dir,
+                                                        filename='chitchat-model_chp/best_model',
+                                                        verbose=True,
+                                                        save_last=True,
+                                                        mode='min',
+                                                        save_top_k=1,
+                                                        prefix='kobart_')
+        tb_logger = pl_loggers.TensorBoardLogger(os.path.join(args.default_root_dir, 'tb_logs'))
+        lr_logger = pl.callbacks.LearningRateMonitor()
+        trainer = pl.Trainer.from_argparse_args(args, logger=tb_logger,
+                                                callbacks=[checkpoint_callback, lr_logger])
+        trainer.fit(model, dm)
     if args.chat:
+        model = KoBARTConditionalGeneration.load_from_checkpoint(args.model_params)
         model.model.eval()
         while 1:
             q = input('user > ').strip()
             if q == 'quit':
                 break
-            print("Simsimi > {}".format(model.chat(q)))
+            print("Bot > {}".format(model.chat(q)))

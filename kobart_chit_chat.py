@@ -45,12 +45,12 @@ class ArgsBase():
             parents=[parent_parser], add_help=False)
         parser.add_argument('--train_file',
                             type=str,
-                            default='data/fm_train.csv',
+                            default='data/fm_train_no_z.csv',
                             help='train file')
 
         parser.add_argument('--test_file',
                             type=str,
-                            default='data/fm_test.csv',
+                            default='data/fm_test_no_z.csv',
                             help='test file')
 
         parser.add_argument('--tokenizer_path',
